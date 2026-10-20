@@ -1,7 +1,7 @@
 # Angel One SmartAPI and live-trading readiness
 
 ## Current safeguards
-- Live trading is off by default (`LIVE_TRADING_ENABLED=false`).
+- Live mode is OFF after every backend restart and can be armed only in the authenticated Broker UI after Angel One login.
 - Server kill switch starts ON after every backend restart.
 - Manual live order requires exact confirmation `LIVE`.
 - Only NSE/BSE cash-equity LIMIT orders are implemented.
@@ -12,11 +12,11 @@
 
 ## Required before real trading
 1. Verify the current official SmartAPI authentication process and the account's login mode.
-2. Register a static public IP for applicable API order requests, and configure the actual local IP and MAC address in backend environment variables.
+2. Register a static public IP for applicable API order requests, and enter the actual local IP and MAC address in the Broker UI. Runtime settings are held in memory and cleared on restart.
 3. Verify exact instrument tokens, trading symbols, tick sizes and lot sizes against current Angel One instrument data.
 4. Confirm product type, exchange, order variety, order tag, price protection, trading hours, and broker restrictions for the instruments you intend to trade.
 5. Run `mvn test`, inspect the source, and test login, quotes, historical candles, order book, cancel/modify and error handling with no real orders first.
-6. Keep the kill switch ON while testing. Only set `LIVE_TRADING_ENABLED=true` after understanding all code paths and verifying broker configuration.
+6. Keep live mode OFF while testing. Only arm it from the Broker UI after understanding all code paths and verifying broker configuration.
 7. Use a small, manually supervised order to verify that submission, broker order ID, status, fills and account reconciliation behave as expected.
 8. Check broker order book after any timeout/unknown result. Do not repeat a potentially accepted order.
 9. Verify the broker's RMS controls, your account permissions and current NSE/SEBI retail algo obligations before enabling unattended strategy execution.

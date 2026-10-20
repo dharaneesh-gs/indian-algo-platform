@@ -8,21 +8,24 @@ import java.util.concurrent.atomic.AtomicReference;
 
 @Service
 class AngelOneClient {
+    record Settings(String apiKey, String clientCode, String registeredStaticIp, String clientLocalIp, String macAddress, String productType) {}
     private final PlatformProperties props;
     private final RestClient client;
+    private volatile Settings settings;
     private final AtomicReference<String> jwt = new AtomicReference<>("");
     private final AtomicReference<String> feed = new AtomicReference<>("");
     private final AtomicReference<String> refresh = new AtomicReference<>("");
 
     AngelOneClient(PlatformProperties props) {
         this.props=props;
+        this.settings=new Settings(props.angel().apiKey(),props.angel().clientCode(),props.angel().registeredStaticIp(),props.angel().clientLocalIp(),props.angel().macAddress(),props.angel().productType());
         this.client=RestClient.builder().baseUrl(props.angel().baseUrl()).build();
     }
     synchronized BrokerModels.LoginStatus login(String pin, String totp) {
         requireBrokerConfig();
         if (pin == null || pin.isBlank() || totp == null || !totp.matches("\\d{6}"))
             throw new IllegalArgumentException("Provide the current broker PIN and six-digit TOTP. They are used only for this login request.");
-        Map<String,Object> body=Map.of("clientcode",props.angel().clientCode(),"password",pin,"totp",totp);
+        Map<String,Object> body=Map.of("clientcode",settings.clientCode(),"password",pin,"totp",totp);
         Map response=client.post().uri("/rest/auth/angelbroking/user/v1/loginByPassword")
             .headers(h -> commonHeaders(h, false)).contentType(MediaType.APPLICATION_JSON).body(body).retrieve().body(Map.class);
         if (response==null || !Boolean.TRUE.equals(response.get("status"))) {
@@ -74,18 +77,25 @@ class AngelOneClient {
         try {
             if (!token.isBlank()) client.post().uri("/rest/secure/angelbroking/user/v1/logout")
                 .headers(h -> commonHeaders(h,true)).contentType(MediaType.APPLICATION_JSON)
-                .body(Map.of("clientcode",props.angel().clientCode())).retrieve().body(Map.class);
+                .body(Map.of("clientcode",settings.clientCode())).retrieve().body(Map.class);
         } finally { jwt.set(""); feed.set(""); refresh.set(""); }
     }
     boolean configured() {
-        return notBlank(props.angel().apiKey()) && notBlank(props.angel().clientCode())
-            && notBlank(props.angel().registeredStaticIp()) && notBlank(props.angel().clientLocalIp())
-            && notBlank(props.angel().macAddress());
+        Settings s=settings;
+        return notBlank(s.apiKey()) && notBlank(s.clientCode()) && notBlank(s.registeredStaticIp()) && notBlank(s.clientLocalIp()) && notBlank(s.macAddress());
+    }
+    synchronized Map<String,Object> configure(BrokerModels.AngelConfigRequest req) {
+        if(req.apiKey()==null||req.apiKey().isBlank()||req.clientCode()==null||req.clientCode().isBlank()||req.registeredStaticIp()==null||req.registeredStaticIp().isBlank()||req.clientLocalIp()==null||req.clientLocalIp().isBlank()||req.macAddress()==null||req.macAddress().isBlank()) throw new IllegalArgumentException("Complete all Angel One API and network fields.");
+        String product=req.productType()==null||req.productType().isBlank()?"DELIVERY":req.productType().trim().toUpperCase(Locale.ROOT);
+        if(!Set.of("DELIVERY","CARRYFORWARD","INTRADAY").contains(product)) throw new IllegalArgumentException("Unsupported Angel One product type.");
+        if(sessionPresent()) logout();
+        settings=new Settings(req.apiKey().trim(),req.clientCode().trim(),req.registeredStaticIp().trim(),req.clientLocalIp().trim(),req.macAddress().trim(),product);
+        return Map.of("configured",true,"message","Angel One settings loaded in backend memory. They are not persisted and must be entered again after restart.");
     }
     boolean sessionPresent() { return notBlank(jwt.get()); }
     String feedToken() { return feed.get(); }
     Map<String,Object> status(boolean enabled) {
-        return Map.of("configured",configured(),"liveTradingEnabled",enabled,"sessionPresent",sessionPresent(),
+        return Map.of("configured",configured(),"liveTradingEnabled",enabled,"sessionPresent",sessionPresent(),"clientCode",settings.clientCode().isBlank()?"":settings.clientCode(),"productType",settings.productType(),
             "broker","Angel One SmartAPI","note","Session tokens remain in backend memory only; logout clears them.");
     }
     Map<String,Object> placeLimitOrder(InstrumentService.Instrument instrument, String side, int quantity, double price, String clientOrderId) {
@@ -94,7 +104,7 @@ class AngelOneClient {
         Map<String,Object> body=new LinkedHashMap<>();
         body.put("variety","NORMAL"); body.put("tradingsymbol",instrument.symbol()); body.put("symboltoken",instrument.token());
         body.put("transactiontype",side); body.put("exchange",instrument.exchange()); body.put("ordertype","LIMIT");
-        body.put("producttype",props.angel().productType()); body.put("duration","DAY");
+        body.put("producttype",settings.productType()); body.put("duration","DAY");
         body.put("price",String.format(Locale.US,"%.2f",price)); body.put("quantity",Integer.toString(quantity));
         body.put("triggerprice","0"); body.put("squareoff","0"); body.put("stoploss","0");
         body.put("trailingstoploss","0"); body.put("disclosedquantity","0"); body.put("ordertag",clientOrderId);
@@ -178,7 +188,7 @@ class AngelOneClient {
         Map<String,Object> body=new LinkedHashMap<>();
         body.put("variety","NORMAL"); body.put("orderid",orderId); body.put("tradingsymbol",instrument.symbol());
         body.put("symboltoken",instrument.token()); body.put("transactiontype",side); body.put("exchange",instrument.exchange());
-        body.put("ordertype","LIMIT"); body.put("producttype",props.angel().productType()); body.put("duration","DAY");
+        body.put("ordertype","LIMIT"); body.put("producttype",settings.productType()); body.put("duration","DAY");
         body.put("price",String.format(Locale.US,"%.2f",price)); body.put("quantity",Integer.toString(quantity));
         body.put("triggerprice","0"); body.put("disclosedquantity","0");
         Map response=client.post().uri("/rest/secure/angelbroking/order/v1/modifyOrder")
@@ -287,13 +297,14 @@ class AngelOneClient {
     }
 
     private void requireBrokerConfig() {
-        if (!configured()) throw new IllegalStateException("Configure ANGEL_API_KEY, ANGEL_CLIENT_CODE, ANGEL_REGISTERED_STATIC_IP, ANGEL_CLIENT_LOCAL_IP and ANGEL_MAC_ADDRESS on the home computer.");
+        if (!configured()) throw new IllegalStateException("Configure Angel One API and network settings in the Broker tab.");
     }
     private void commonHeaders(org.springframework.http.HttpHeaders h, boolean auth) {
-        h.set("X-PrivateKey",props.angel().apiKey());
-        h.set("X-ClientLocalIP",props.angel().clientLocalIp());
-        h.set("X-ClientPublicIP",props.angel().registeredStaticIp());
-        h.set("X-MACAddress",props.angel().macAddress());
+        Settings s=settings;
+        h.set("X-PrivateKey",s.apiKey());
+        h.set("X-ClientLocalIP",s.clientLocalIp());
+        h.set("X-ClientPublicIP",s.registeredStaticIp());
+        h.set("X-MACAddress",s.macAddress());
         h.set("X-UserType","USER"); h.set("X-SourceID","WEB");
         h.set("Accept","application/json");
         if (auth && sessionPresent()) h.setBearerAuth(jwt.get());

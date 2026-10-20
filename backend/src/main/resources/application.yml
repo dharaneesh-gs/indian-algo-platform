@@ -29,15 +29,13 @@ trading:
     max-order-value: ${RISK_MAX_ORDER_VALUE:25000}
     max-open-position-value: ${RISK_MAX_OPEN_POSITION_VALUE:75000}
     max-daily-loss: ${RISK_MAX_DAILY_LOSS:5000}
-  live:
-    enabled: ${LIVE_TRADING_ENABLED:false}
   strategy:
     poll-ms: ${TRADING_STRATEGY_POLL_MS:15000}
   angel:
-    api-key: ${ANGEL_API_KEY:}
-    client-code: ${ANGEL_CLIENT_CODE:}
-    registered-static-ip: ${ANGEL_REGISTERED_STATIC_IP:}
-    client-local-ip: ${ANGEL_CLIENT_LOCAL_IP:}
-    mac-address: ${ANGEL_MAC_ADDRESS:}
-    product-type: ${ANGEL_PRODUCT_TYPE:DELIVERY}
+    api-key: ''
+    client-code: ''
+    registered-static-ip: ''
+    client-local-ip: ''
+    mac-address: ''
+    product-type: DELIVERY
     base-url: https://apiconnect.angelone.in

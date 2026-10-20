@@ -28,8 +28,6 @@ if [[ -z "${APP_API_TOKEN:-}" || ${#APP_API_TOKEN} -lt 32 ]]; then
   printf '%s\n' "$APP_API_TOKEN"
 fi
 export APP_BIND_ADDRESS="${APP_BIND_ADDRESS:-127.0.0.1}"
-export LIVE_TRADING_ENABLED="${LIVE_TRADING_ENABLED:-false}"
-if [[ "$LIVE_TRADING_ENABLED" == "true" ]]; then echo "WARNING: LIVE TRADING IS EXPLICITLY ENABLED. Verify broker/risk settings."; fi
 echo "Starting packaged application: $(basename "$jar")"
 echo "Live trading is disabled. Backend bind address: $APP_BIND_ADDRESS"
 exec java -jar "$jar"

@@ -6,6 +6,9 @@ import java.util.List;
 public final class BrokerModels {
     private BrokerModels() {}
     public record LoginRequest(@NotBlank String pin, @NotBlank String totp) {}
+    public record AngelConfigRequest(@NotBlank String apiKey, @NotBlank String clientCode, @NotBlank String registeredStaticIp,
+                                     @NotBlank String clientLocalIp, @NotBlank String macAddress, String productType) {}
+    public record LiveModeRequest(boolean enabled, String confirmation) {}
     public record InstrumentInput(@NotBlank String symbol, @NotBlank String token, @NotBlank String exchange,
                                   double tickSize, int lotSize) {}
     public record LiveOrderRequest(@NotBlank String symbol, @NotBlank String exchange, @NotBlank String side,

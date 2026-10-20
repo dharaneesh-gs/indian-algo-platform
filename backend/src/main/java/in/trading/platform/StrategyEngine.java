@@ -13,7 +13,6 @@ class StrategyEngine {
     private final AngelOneClient angel;
     private final TradingService trading;
     private final AuditService audit;
-    private final PlatformProperties props;
     private volatile boolean enabled=false;
     private volatile String symbol="DEMO", exchange="NSE", mode="PAPER";
     private volatile int fast=5;
@@ -22,8 +21,8 @@ class StrategyEngine {
     private volatile String lastSignal="No signal yet", lastError="";
 
     StrategyEngine(InstrumentService instruments, MarketDataService market, AngelOneClient angel,
-                   TradingService trading, AuditService audit, PlatformProperties props) {
-        this.instruments=instruments; this.market=market; this.angel=angel; this.trading=trading; this.audit=audit; this.props=props;
+                   TradingService trading, AuditService audit) {
+        this.instruments=instruments; this.market=market; this.angel=angel; this.trading=trading; this.audit=audit;
     }
 
     synchronized BrokerModels.StrategyStatus configure(BrokerModels.StrategyConfigRequest req) {
@@ -34,8 +33,8 @@ class StrategyEngine {
         if(req.fastPeriod()<2 || req.slowPeriod()<=req.fastPeriod() || req.slowPeriod()>500)
             throw new IllegalArgumentException("Periods must satisfy 2 <= fastPeriod < slowPeriod <= 500.");
         if(req.quantity()<1 || req.quantity()>100000) throw new IllegalArgumentException("Strategy quantity must be between 1 and 100000.");
-        if(m.equals("LIVE") && !props.live().enabled()) throw new IllegalStateException("Set LIVE_TRADING_ENABLED=true on the backend only after broker and compliance setup.");
-        if(m.equals("LIVE") && trading.liveKillSwitch()) throw new IllegalStateException("Clear the live kill switch with explicit confirmation before configuring live automation.");
+        if(m.equals("LIVE") && !trading.liveTradingArmed()) throw new IllegalStateException("Enable live mode in the dashboard before configuring live automation.");
+        if(m.equals("LIVE") && trading.liveKillSwitch()) throw new IllegalStateException("Live kill switch is ON.");
         if(m.equals("LIVE")) instruments.require(ex,sym);
         symbol=sym; exchange=ex; mode=m; fast=req.fastPeriod(); slow=req.slowPeriod(); quantity=req.quantity();
         lastError="";
@@ -44,8 +43,8 @@ class StrategyEngine {
     }
     synchronized BrokerModels.StrategyStatus start() {
         if(!angel.sessionPresent()) throw new IllegalStateException("Authorize Angel One to provide current market prices before starting the strategy.");
-        if(mode.equals("LIVE") && (!props.live().enabled() || trading.liveKillSwitch()))
-            throw new IllegalStateException("Live strategy blocked by server live flag or kill switch.");
+        if(mode.equals("LIVE") && (!trading.liveTradingArmed() || trading.liveKillSwitch()))
+            throw new IllegalStateException("Live strategy blocked by live mode or kill switch.");
         instruments.require(exchange,symbol);
         enabled=true; lastError="";
         audit.record("STRATEGY_STARTED",mode,"SMA "+fast+"/"+slow+" "+exchange+":"+symbol);
@@ -63,7 +62,7 @@ class StrategyEngine {
     void tick() {
         if(!enabled) return;
         try {
-            if(mode.equals("LIVE") && (trading.liveKillSwitch() || !props.live().enabled())) {
+            if(mode.equals("LIVE") && (trading.liveKillSwitch() || !trading.liveTradingArmed())) {
                 enabled=false; lastError="Live safety gate closed; strategy automatically stopped."; audit.record("STRATEGY_AUTO_STOP","LIVE",lastError); return;
             }
             InstrumentService.Instrument instrument=instruments.require(exchange,symbol);

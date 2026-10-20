@@ -43,8 +43,6 @@ if ([string]::IsNullOrWhiteSpace($env:APP_API_TOKEN) -or $env:APP_API_TOKEN.Leng
     Write-Host $env:APP_API_TOKEN
 }
 if ([string]::IsNullOrWhiteSpace($env:APP_BIND_ADDRESS)) { $env:APP_BIND_ADDRESS = "127.0.0.1" }
-if ([string]::IsNullOrWhiteSpace($env:LIVE_TRADING_ENABLED)) { $env:LIVE_TRADING_ENABLED = "false" }
-if ($env:LIVE_TRADING_ENABLED -eq "true") { Write-Warning "LIVE TRADING IS EXPLICITLY ENABLED. Verify all broker/risk settings before continuing." }
 
 Write-Host "Starting packaged application: $($jar.Name)" -ForegroundColor Green
 Write-Host "Live trading is disabled. Backend bind address: $env:APP_BIND_ADDRESS" -ForegroundColor Yellow

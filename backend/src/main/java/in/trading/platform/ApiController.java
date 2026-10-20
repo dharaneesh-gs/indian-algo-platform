@@ -11,18 +11,17 @@ class ApiController {
     private final MarketDataService market;
     private final AuditService audit;
     private final AngelOneClient angel;
-    private final PlatformProperties props;
     private final TradeRepository tradeRepository;
     private final InstrumentService instruments;
     private final StrategyEngine strategy;
 
     ApiController(TradingService trading, MarketDataService market, AuditService audit, AngelOneClient angel,
-                  PlatformProperties props, TradeRepository tradeRepository, InstrumentService instruments, StrategyEngine strategy) {
-        this.trading=trading; this.market=market; this.audit=audit; this.angel=angel; this.props=props;
+                  TradeRepository tradeRepository, InstrumentService instruments, StrategyEngine strategy) {
+        this.trading=trading; this.market=market; this.audit=audit; this.angel=angel;
         this.tradeRepository=tradeRepository; this.instruments=instruments; this.strategy=strategy;
     }
     @GetMapping("/health") Map<String,Object> health() {
-        return Map.of("status","ok","service","indian-algo-platform","liveTradingConfigured",props.live().enabled());
+        return Map.of("status","ok","service","indian-algo-platform","liveTradingConfigured",trading.liveTradingArmed());
     }
     @GetMapping("/account") ApiModels.AccountResponse account() { return trading.account(); }
     @GetMapping("/strategy/status") BrokerModels.StrategyStatus strategyStatus() { return strategy.status(); }
@@ -55,9 +54,16 @@ class ApiController {
     @GetMapping("/audit") List<Map<String,Object>> audit() { return audit.recent(); }
 
     @GetMapping("/broker/angel/status") Map<String,Object> brokerStatus() {
-        Map<String,Object> result=new LinkedHashMap<>(angel.status(props.live().enabled()));
+        Map<String,Object> result=new LinkedHashMap<>(angel.status(trading.liveTradingArmed()));
         result.put("killSwitchOn",trading.liveKillSwitch());
+        result.put("liveModeArmed",trading.liveTradingArmed());
         result.put("instrumentCount",instruments.all().size());
+        return result;
+    }
+    @PostMapping("/broker/angel/configure") Map<String,Object> configureAngel(@Valid @RequestBody BrokerModels.AngelConfigRequest req) {
+        trading.setLiveMode(false,"");
+        Map<String,Object> result=angel.configure(req);
+        audit.record("BROKER_CONFIGURED","LIVE","Angel One runtime settings updated; credentials held in backend memory");
         return result;
     }
     @PostMapping("/broker/angel/login") BrokerModels.LoginStatus login(@Valid @RequestBody BrokerModels.LoginRequest req) {
@@ -72,7 +78,8 @@ class ApiController {
     }
     @GetMapping("/broker/angel/account") Map<String,Object> brokerAccount() { return angel.accountSnapshot(); }
     @PostMapping("/broker/angel/logout") Map<String,Object> logout() {
-        angel.logout(); audit.record("BROKER_LOGOUT","LIVE","Angel One session cleared");
+        try { angel.logout(); } finally { trading.setLiveMode(false,""); }
+        audit.record("BROKER_LOGOUT","LIVE","Angel One session cleared and live mode disarmed");
         return Map.of("status","ok","message","Broker session cleared from backend memory.");
     }
     @GetMapping("/broker/angel/order-book") Map<String,Object> brokerOrderBook() { return angel.orderBook(); }
@@ -100,5 +107,10 @@ class ApiController {
     @PostMapping("/risk/kill-switch") Map<String,Object> killSwitch(@RequestBody BrokerModels.KillSwitchRequest req) {
         trading.setLiveKillSwitch(req.enabled(),req.confirmation());
         return Map.of("killSwitchOn",trading.liveKillSwitch(),"message",req.enabled()?"Live orders blocked.":"Kill switch cleared; all other live-trading gates remain active.");
+    }
+    @PostMapping("/risk/live-mode") Map<String,Object> liveMode(@RequestBody BrokerModels.LiveModeRequest req) {
+        trading.setLiveMode(req.enabled(),req.confirmation());
+        if(!req.enabled() && strategy.status().enabled() && "LIVE".equals(strategy.status().mode())) strategy.stop();
+        return Map.of("liveModeArmed",trading.liveTradingArmed(),"killSwitchOn",trading.liveKillSwitch(),"message",req.enabled()?"Live mode enabled.":"Live mode disabled; kill switch is ON.");
     }
 }

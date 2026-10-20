@@ -15,7 +15,7 @@ Unbranded source project for Indian NSE/BSE cash-equity paper trading, strategy 
 This is a substantial end-to-end **source implementation**, not a certified production trading system. Maven is unavailable in this authoring environment and npm registry access timed out, so Java compilation and the Angular production build remain unverified. Build/test the backend and clients on your own computer before using it.
 
 The live-order path is implemented against Angel One SmartAPI's documented login, quote, historical candle, order, modify/cancel, order book, RMS and position endpoints. It is fail-closed by default. Real order submission requires all of the following:
-- `LIVE_TRADING_ENABLED=true` set on the home computer
+- Live mode explicitly enabled in the Broker tab (starts OFF after every restart)
 - an authenticated Angel One session
 - current, correct instrument symbol/token/tick/lot mapping
 - registered static public IP and correct local-IP/MAC headers
@@ -87,17 +87,12 @@ Open the `android/` folder in Android Studio, allow Gradle sync, then run the `a
 
 1. Create/enable your SmartAPI application through Angel One's official portal.
 2. Read the current [SmartAPI docs](https://smartapi.angelone.in/docs) and verify the current authentication flow for your account.
-3. Set server-side environment variables:
-   - `ANGEL_API_KEY`
-   - `ANGEL_CLIENT_CODE`
-   - `ANGEL_REGISTERED_STATIC_IP` — the static public IP registered with Angel One
-   - `ANGEL_CLIENT_LOCAL_IP` — the actual local interface IP used by the backend
-   - `ANGEL_MAC_ADDRESS` — actual MAC address for the backend machine
-   - `ANGEL_PRODUCT_TYPE` — normally `DELIVERY` for the cash-equity flow in this starter; confirm against your account/API docs
-4. Restart the backend. Use the app's Broker tab to submit your PIN and current six-digit TOTP over HTTPS. The backend does not save the PIN/TOTP and keeps the session tokens in process memory only. Logout or restart clears the in-memory session.
+3. Open the app's Broker tab and enter the API key, client code, registered static public IP, backend local IP, MAC address, and product type. These settings are held in backend memory and cleared on restart.
+4. Submit your PIN and current six-digit TOTP. The backend does not save the PIN/TOTP and keeps session tokens in process memory only. Logout or restart clears the session and disarms live mode.
+   Use the web dashboard's Broker tab for API credentials and live-mode enable/disable. The native clients can use the broker session after setup, while the backend enforces the same mode and risk gates.
 5. Register exact instrument mappings in the app using the current official Angel One instrument master: exchange, exact trading symbol, token, tick size in rupees, and lot size. These mappings are persisted in `backend/data/instruments.json`. Do not guess a token or tick size.
 6. Fetch a live quote and historical candles; verify the symbol, price, timestamps and token against the broker.
-7. Keep `LIVE_TRADING_ENABLED=false` while testing paper mode, backtests, order book and risk gates.
+7. Leave live mode OFF while testing paper mode, backtests, order book and risk gates. Paper orders remain available while live mode is off.
 
 ### Static IP / retail algo rules
 
@@ -135,11 +130,11 @@ All endpoints except `/api/health` require the bearer token.
 - `GET /api/market/{symbol}/candles`, `PUT /api/market/{symbol}/candles`, `POST /api/market/demo`
 - `POST /api/backtest/{symbol}`
 - `GET /api/instruments`, `POST /api/instruments`, `POST /api/instruments/refresh-official`
-- `GET /api/broker/angel/status`, `POST /api/broker/angel/login`, `POST /api/broker/angel/refresh`, `POST /api/broker/angel/logout`
+- `GET /api/broker/angel/status`, `POST /api/broker/angel/configure`, `POST /api/broker/angel/login`, `POST /api/broker/angel/refresh`, `POST /api/broker/angel/logout`
 - `GET /api/broker/angel/account`, `GET /api/broker/angel/order-book`, `GET /api/broker/angel/quote/{exchange}/{symbol}`
 - `POST /api/broker/angel/history`
 - `POST /api/live/orders`, `POST /api/live/orders/resolve-unknown`, `POST /api/broker/angel/cancel-order`, `POST /api/broker/angel/modify-limit-order`
-- `POST /api/risk/kill-switch`
+- `POST /api/risk/live-mode`, `POST /api/risk/kill-switch`
 - `GET /api/strategy/status`, `POST /api/strategy/configure`, `POST /api/strategy/start`, `POST /api/strategy/stop`
 
 ## Known limitations — do not ignore

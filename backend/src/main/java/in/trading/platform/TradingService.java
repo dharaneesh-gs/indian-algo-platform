@@ -15,6 +15,7 @@ class TradingService {
     private final InstrumentService instruments;
     private final PaperAccountRepository paperAccounts;
     private boolean liveKillSwitch = true;
+    private boolean liveTradingArmed = false;
     private long lastLiveOrderNanos = 0L;
     private double cash;
     private double realizedPnl=0;
@@ -140,7 +141,7 @@ class TradingService {
     }
     synchronized Map<String,Object> modifyLiveOrder(BrokerModels.ModifyOrderRequest req) {
         if(!"MODIFY LIVE".equals(req.confirmation())) throw new IllegalArgumentException("Order modification requires confirmation='MODIFY LIVE'.");
-        if(liveKillSwitch || !props.live().enabled()) throw new IllegalStateException("Live order modification blocked by server flag or kill switch.");
+        if(liveKillSwitch || !liveTradingArmed) throw new IllegalStateException("Live order modification blocked by live mode or kill switch.");
         if(req.quantity()<1 || req.limitPrice()<=0) throw new IllegalArgumentException("Quantity and limit price must be positive.");
         if(!Set.of("BUY","SELL").contains(req.side().toUpperCase())) throw new IllegalArgumentException("Side must be BUY or SELL.");
         InstrumentService.Instrument instrument=instruments.require(req.exchange(),req.symbol());
@@ -183,6 +184,18 @@ class TradingService {
         paperAccounts.save(state);
     }
     synchronized boolean liveKillSwitch() { return liveKillSwitch; }
+    synchronized boolean liveTradingArmed() { return liveTradingArmed; }
+    synchronized void setLiveMode(boolean enabled, String confirmation) {
+        if(enabled) {
+            if(!"ENABLE LIVE".equals(confirmation)) throw new IllegalArgumentException("Enabling live mode requires the exact confirmation ENABLE LIVE.");
+            if(!angel.configured() || !angel.sessionPresent()) throw new IllegalStateException("Configure Angel One and log in before enabling live mode.");
+            liveTradingArmed=true; liveKillSwitch=false;
+            audit.record("LIVE_MODE_ENABLED","LIVE","Live mode explicitly armed from dashboard");
+        } else {
+            liveTradingArmed=false; liveKillSwitch=true;
+            audit.record("LIVE_MODE_DISABLED","LIVE","Live mode disarmed; kill switch enabled");
+        }
+    }
     synchronized void setLiveKillSwitch(boolean enabled, String confirmation) {
         if(!enabled && !"ENABLE LIVE".equals(confirmation))
             throw new IllegalArgumentException("Clearing the kill switch requires confirmation='ENABLE LIVE'.");
@@ -206,7 +219,7 @@ class TradingService {
         if(req.quantity()<1 || req.quantity()>100000) throw new IllegalArgumentException("Quantity must be between 1 and 100000.");
         if(req.limitPrice()<=0) throw new IllegalArgumentException("Live orders require a positive limit price.");
         if(liveKillSwitch) throw new IllegalStateException("Live kill switch is ON. Disable it deliberately through the authenticated API after review.");
-        if(!props.live().enabled()) throw new IllegalStateException("Live trading is disabled in server configuration.");
+        if(!liveTradingArmed) throw new IllegalStateException("Live mode is OFF. Enable it in the dashboard after completing broker setup.");
         long now=System.nanoTime();
         if(lastLiveOrderNanos!=0 && now-lastLiveOrderNanos<200_000_000L)
             throw new IllegalStateException("Local order rate limit reached. Wait before submitting another order.");

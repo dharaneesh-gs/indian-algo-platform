@@ -168,7 +168,7 @@ struct MainView: View {
                     }
                     Button("Submit REAL LIMIT order", role: .destructive) { Task { await model.placeLiveOrder() } }
                         .disabled(model.liveConfirmation != "LIVE" || model.killSwitchOn || model.brokerStatus?.liveTradingEnabled != true || model.brokerStatus?.sessionPresent != true)
-                    Text("Real orders require server-side LIVE_TRADING_ENABLED=true, kill switch OFF, valid broker session, current instrument mapping, registered static IP, and risk checks. Orders can lose money.")
+                    Text("Arm live mode from the authenticated web dashboard after Angel One setup. The mode starts OFF after backend restart; the server also checks the kill switch, broker session, instrument mapping, static IP, and risk limits. Orders can lose money.")
                         .font(.footnote).foregroundStyle(.orange)
                 }
                 Section("Emergency stop") {

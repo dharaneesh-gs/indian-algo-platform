@@ -1,0 +1,53 @@
+$ErrorActionPreference = "Stop"
+Set-Location $PSScriptRoot
+
+# Java -version writes to stderr on some Windows installations. Handle that safely.
+if (-not (Get-Command java -ErrorAction SilentlyContinue)) {
+    throw "Install JDK 21 and add java to PATH."
+}
+$previousPreference = $ErrorActionPreference
+try {
+    $ErrorActionPreference = "Continue"
+    $javaOutput = (& java -version 2>&1 | Out-String)
+    $javaExitCode = $LASTEXITCODE
+}
+finally {
+    $ErrorActionPreference = $previousPreference
+}
+if ($javaExitCode -ne 0 -or $javaOutput -notmatch 'version "?(21)\.') {
+    throw "A working Java 21 installation is required. Output: $javaOutput"
+}
+Write-Host "Java 21 detected." -ForegroundColor Green
+
+# Startup intentionally uses an already-packaged JAR; no Maven invocation here.
+$targetDir = Join-Path $PSScriptRoot "target"
+if (-not (Test-Path $targetDir -PathType Container)) {
+    throw "Packaged JAR not found. Build once from backend with: mvn clean package"
+}
+$jar = Get-ChildItem -Path $targetDir -Filter "*.jar" -File -ErrorAction SilentlyContinue |
+    Where-Object { $_.Name -notmatch '(-sources|-javadoc|\.original|\.plain)\.jar$' } |
+    Sort-Object LastWriteTime -Descending |
+    Select-Object -First 1
+if (-not $jar) {
+    throw "No executable JAR found in target. Build once with: mvn clean package"
+}
+
+# Generate a per-run API token if one was not supplied.
+if ([string]::IsNullOrWhiteSpace($env:APP_API_TOKEN) -or $env:APP_API_TOKEN.Length -lt 32) {
+    $bytes = New-Object byte[] 32
+    $rng = [System.Security.Cryptography.RandomNumberGenerator]::Create()
+    try { $rng.GetBytes($bytes) } finally { $rng.Dispose() }
+    # BitConverter works on older Windows PowerShell/.NET versions too.
+    $env:APP_API_TOKEN = [System.BitConverter]::ToString($bytes).Replace("-", "").ToLowerInvariant()
+    Write-Host "Generated API token for this run. Enter it in the web/iPhone/Android client:" -ForegroundColor Yellow
+    Write-Host $env:APP_API_TOKEN
+}
+if ([string]::IsNullOrWhiteSpace($env:APP_BIND_ADDRESS)) { $env:APP_BIND_ADDRESS = "127.0.0.1" }
+if ([string]::IsNullOrWhiteSpace($env:LIVE_TRADING_ENABLED)) { $env:LIVE_TRADING_ENABLED = "false" }
+if ($env:LIVE_TRADING_ENABLED -eq "true") { Write-Warning "LIVE TRADING IS EXPLICITLY ENABLED. Verify all broker/risk settings before continuing." }
+
+Write-Host "Starting packaged application: $($jar.Name)" -ForegroundColor Green
+Write-Host "Live trading is disabled. Backend bind address: $env:APP_BIND_ADDRESS" -ForegroundColor Yellow
+& java -jar $jar.FullName
+$exitCode = $LASTEXITCODE
+if ($exitCode -ne 0) { throw "Spring Boot exited with code $exitCode." }

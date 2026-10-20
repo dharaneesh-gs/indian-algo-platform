@@ -1,0 +1,9 @@
+# Local data and secrets
+backend/data/
+backend/.env
+backend/target/
+backend/src/main/resources/static/
+.DS_Store
+*.xcuserstate
+DerivedData/
+web-angular/node_modules/

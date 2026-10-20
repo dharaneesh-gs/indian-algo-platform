@@ -1,0 +1,43 @@
+server:
+  address: ${APP_BIND_ADDRESS:127.0.0.1}
+  port: ${APP_PORT:8080}
+spring:
+  application:
+    name: indian-algo-platform
+  datasource:
+    url: jdbc:h2:file:./data/tradingdb;DB_CLOSE_ON_EXIT=FALSE
+    driverClassName: org.h2.Driver
+    username: sa
+    password: ${DB_PASSWORD:}
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+  h2:
+    console:
+      enabled: false
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+trading:
+  paper:
+    starting-cash: ${PAPER_STARTING_CASH:100000}
+    brokerage-rate: ${PAPER_BROKERAGE_RATE:0.0003}
+  risk:
+    max-order-value: ${RISK_MAX_ORDER_VALUE:25000}
+    max-open-position-value: ${RISK_MAX_OPEN_POSITION_VALUE:75000}
+    max-daily-loss: ${RISK_MAX_DAILY_LOSS:5000}
+  live:
+    enabled: ${LIVE_TRADING_ENABLED:false}
+  strategy:
+    poll-ms: ${TRADING_STRATEGY_POLL_MS:15000}
+  angel:
+    api-key: ${ANGEL_API_KEY:}
+    client-code: ${ANGEL_CLIENT_CODE:}
+    registered-static-ip: ${ANGEL_REGISTERED_STATIC_IP:}
+    client-local-ip: ${ANGEL_CLIENT_LOCAL_IP:}
+    mac-address: ${ANGEL_MAC_ADDRESS:}
+    product-type: ${ANGEL_PRODUCT_TYPE:DELIVERY}
+    base-url: https://apiconnect.angelone.in

@@ -1,6 +1,6 @@
 # Android client
 
-Native Android client built with Kotlin and Jetpack Compose. It connects to the same Spring Boot API and includes connection/token entry, paper account overview, paper orders, strategy configuration/start/stop, backtesting, Angel One session/account/order-book status, and audit log access.
+Native Android client built with Kotlin and Jetpack Compose. It connects to the same Spring Boot API with OAuth 2.0 and includes paper account overview, paper orders, strategy configuration/start/stop, backtesting, Angel One session/account/order-book status, and audit log access.
 
 ## Build in Android Studio
 
@@ -17,4 +17,4 @@ No Gradle wrapper is included in this source package; use the Gradle installatio
 
 For a physical phone, set `APP_BIND_ADDRESS=0.0.0.0` in the same terminal before starting the backend, and allow port 8080 only on the private network in Windows Firewall. Keep the computer and phone on a trusted LAN. Do not port-forward this port to the public internet. The app's cleartext HTTP setting is for local development only; use HTTPS for real deployment and never send PIN/TOTP over an untrusted connection.
 
-Enter the token printed by the backend launcher. The Android client deliberately does not persist it. Live-order placement is not exposed in this initial Android screen; use the web or iPhone client only after all server-side trading gates are validated.
+Use the Android **Sign in** button to authenticate through the system browser with OAuth 2.0 and PKCE. Access tokens expire after 10 minutes; sign in again when prompted. Create the first account on the backend computer's web dashboard before connecting the phone. Live-order placement is not exposed in this initial Android screen; use the web or iPhone client only after all server-side trading gates are validated.

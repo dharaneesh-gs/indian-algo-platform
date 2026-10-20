@@ -12,7 +12,7 @@ Unbranded source project for Indian NSE/BSE cash-equity paper trading, strategy 
 
 ## Honest implementation status
 
-This is a substantial end-to-end **source implementation**, not a certified production trading system. Maven is unavailable in this authoring environment and npm registry access timed out, so Java compilation and the Angular production build remain unverified. Build/test the backend and clients on your own computer before using it.
+This is a substantial end-to-end **source implementation**, not a certified production trading system. Backend compilation (`mvn -DskipTests compile`) and the Angular production build have completed. Automated tests and native Android/iOS builds have not been run here.
 
 The live-order path is implemented against Angel One SmartAPI's documented login, quote, historical candle, order, modify/cancel, order book, RMS and position endpoints. It is fail-closed by default. Real order submission requires all of the following:
 - Live mode explicitly enabled in the Broker tab (starts OFF after every restart)
@@ -37,7 +37,7 @@ mvn clean package
 
 On macOS/Linux, use `./run-backend.sh` instead. The launch scripts start the existing JAR with `java -jar`; they do not invoke Maven or compile on each launch. The scripts keep live trading disabled.
 
-Once the server starts, open **http://127.0.0.1:8080/** in your browser. Paste the `APP_API_TOKEN` printed in the backend terminal into the dashboard and click Connect. The web UI is served by Spring Boot itself; no separate web server is required.
+Once the server starts, open **http://127.0.0.1:8080/** in your browser. On first run, create the first account; then use **Sign in**. The app uses OAuth 2.0 Authorization Code with PKCE and short-lived access tokens. The web UI is served by Spring Boot itself; no separate web server is required.
 
 The project includes a static dashboard so the browser UI works immediately after backend packaging. The Angular source is in `web-angular/`. To replace the fallback dashboard with the production Angular bundle, run this once from `web-angular/` on a machine with npm registry access:
 
@@ -50,9 +50,7 @@ Then rebuild the backend once with `mvn clean package`. See `web-angular/README.
 
 ### Required environment
 
-`APP_API_TOKEN` must be a random secret at least 32 characters long. The launcher generates one if absent. Save the displayed token for the web/iPhone/Android clients; a generated token changes on each launch unless you supply a stable value in the environment.
-
-The backend binds to `127.0.0.1` by default. `GET /api/health` is public; all other `/api/*` routes require `Authorization: Bearer <APP_API_TOKEN>`. Paper account state, trades, audit events and instrument mappings are saved in `backend/data/`.
+The backend binds to `127.0.0.1` by default. `GET /api/health` is public; all other `/api/*` routes require OAuth 2.0 access tokens. Password hashes are stored in the local database. Initial account setup closes after the first account is created. Register additional browser callback origins with comma-separated exact URLs in `AUTH_WEB_REDIRECT_URIS` if the dashboard is opened through a custom host. Paper account state, trades, audit events and instrument mappings are saved in `backend/data/`.
 
 ### Connect a physical Android phone
 
@@ -62,7 +60,7 @@ For an Android emulator, the app's default URL `http://10.0.2.2:8080` reaches th
 
 ```bash
 curl http://127.0.0.1:8080/api/health
-curl -H "Authorization: Bearer $APP_API_TOKEN" http://127.0.0.1:8080/api/account
+curl http://127.0.0.1:8080/auth/status
 ```
 
 Demo candle data is synthetic, not a live or historical exchange feed.
@@ -74,7 +72,7 @@ Requirements: a Mac with Xcode 15 or later, an Apple ID, and iPhone 13 running i
 1. Open `ios/TradingPlatform.xcodeproj` in Xcode.
 2. Select the `TradingPlatform` target. Under Signing & Capabilities, select your Apple ID team and set a unique bundle identifier.
 3. Select your iPhone 13 and press Run.
-4. In the app, replace the backend URL placeholder with your private HTTPS URL and enter the same `APP_API_TOKEN`.
+4. In the app, replace the backend URL placeholder with your private HTTPS URL and tap **Sign in with OAuth 2.0**. The iPhone opens the system browser and returns to the app after authentication.
 5. Tap **Connect / Refresh**.
 
 For safe remote access, keep Spring Boot bound to `127.0.0.1` and use a private VPN such as Tailscale plus its HTTPS serving feature to expose only the backend to your own devices. Do not port-forward port 8080 to the public internet. Avoid sending broker PIN/TOTP over plain HTTP. Use a trusted HTTPS connection.
@@ -122,7 +120,7 @@ Official references:
 
 ## 6. API reference
 
-All endpoints except `/api/health` require the bearer token.
+All `/api/*` endpoints except `/api/health` require OAuth 2.0 access tokens. `/auth/status` and first-account `/auth/register` are public; OAuth authorization and token endpoints follow the Authorization Code with PKCE flow.
 
 - `GET /api/account`
 - `POST /api/paper/orders`
@@ -130,6 +128,7 @@ All endpoints except `/api/health` require the bearer token.
 - `GET /api/market/{symbol}/candles`, `PUT /api/market/{symbol}/candles`, `POST /api/market/demo`
 - `POST /api/backtest/{symbol}`
 - `GET /api/instruments`, `POST /api/instruments`, `POST /api/instruments/refresh-official`
+- `GET /auth/status`, one-time `POST /auth/register`, `/oauth2/authorize`, `/oauth2/token`
 - `GET /api/broker/angel/status`, `POST /api/broker/angel/configure`, `POST /api/broker/angel/login`, `POST /api/broker/angel/refresh`, `POST /api/broker/angel/logout`
 - `GET /api/broker/angel/account`, `GET /api/broker/angel/order-book`, `GET /api/broker/angel/quote/{exchange}/{symbol}`
 - `POST /api/broker/angel/history`
@@ -139,12 +138,12 @@ All endpoints except `/api/health` require the bearer token.
 
 ## Known limitations — do not ignore
 
-- Java compilation/JUnit, Angular production compilation and Android Gradle build were not run in this authoring environment. Run `mvn clean package`, `npm install && npm run build`, and build the Android app in Android Studio before relying on anything.
+- JUnit tests and native Android/iOS builds were not run in this authoring environment. Run `mvn clean package`, then build the mobile clients in Android Studio and Xcode before relying on them.
 - Live market data uses REST LTP polling, not SmartAPI WebSocket streaming; polling is not tick-by-tick.
 - Instrument mappings are entered by the user and must be verified against the current official master.
 - Live order-book reconciliation is manual; no broker postback/websocket order-state listener is included.
 - Broker session tokens are in memory only and must be refreshed/logged in as required.
-- The API token is a shared bearer secret, not full multi-user identity/device authentication. Keep backend private behind HTTPS/VPN and rotate it if exposed.
+- OAuth signing keys and authorization grants are in memory. Access tokens expire after 10 minutes; users can sign in again through the system browser. Restarting the backend invalidates active sessions and tokens.
 - Strategy configuration is not persisted and strategies stop after restart.
 - The local H2 database is a single-user starter store, not a high-availability trading ledger.
 - This is not financial advice or a guarantee of profitable trading.

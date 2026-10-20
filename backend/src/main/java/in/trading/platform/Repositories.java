@@ -18,3 +18,6 @@ interface HoldingRepository extends JpaRepository<HoldingEntity, Long> {
 }
 
 interface PaperAccountRepository extends JpaRepository<PaperAccountEntity, Long> {}
+interface AppUserRepository extends JpaRepository<AppUserEntity, Long> {
+    Optional<AppUserEntity> findByUsernameIgnoreCase(String username);
+}

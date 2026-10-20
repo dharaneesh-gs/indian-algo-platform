@@ -76,3 +76,16 @@ class PaperAccountEntity {
         this.currentDay=currentDay; this.dayStartEquity=dayStartEquity;
     }
 }
+
+@Entity
+@Table(name = "app_users", uniqueConstraints = @UniqueConstraint(columnNames = "username"))
+class AppUserEntity {
+    @Id @GeneratedValue(strategy = GenerationType.IDENTITY) Long id;
+    @Column(nullable = false, unique = true, length = 64) String username;
+    @Column(nullable = false, length = 100) String passwordHash;
+    Instant createdAt;
+    protected AppUserEntity() {}
+    AppUserEntity(String username, String passwordHash) {
+        this.username=username; this.passwordHash=passwordHash; this.createdAt=Instant.now();
+    }
+}

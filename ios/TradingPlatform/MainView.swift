@@ -18,8 +18,11 @@ struct MainView: View {
                     Text("Local algo-trading workspace").font(.title2.bold())
                     Text(model.health).font(.caption).foregroundStyle(.secondary)
                     TextField("Backend URL", text: $model.baseURL).textInputAutocapitalization(.never).keyboardType(.URL).textFieldStyle(.roundedBorder)
-                    SecureField("Backend API token", text: $model.apiToken).textFieldStyle(.roundedBorder)
-                    Button("Connect / Refresh") { Task { await model.connect() } }.buttonStyle(.borderedProminent)
+                    if model.firstAccountSetupOpen {
+                        Text("Create the first account from the backend computer's web dashboard.").font(.footnote).foregroundStyle(.secondary)
+                    }
+                    Button("Sign in with OAuth 2.0") { Task { await model.signIn() } }.buttonStyle(.borderedProminent)
+                    if !model.accessToken.isEmpty { Button("Refresh account") { Task { await model.connect() } }.buttonStyle(.bordered); Button("Sign out") { model.signOut() }.buttonStyle(.bordered) }
                     if let a = model.account {
                         HStack { metric("Equity", money(a.equity)); metric("Cash", money(a.cash)) }
                         HStack { metric("Unrealized P&L", money(a.unrealizedPnl)); metric("Realized P&L", money(a.realizedPnl)) }
@@ -42,7 +45,7 @@ struct MainView: View {
                         .font(.footnote).foregroundStyle(.orange)
                     if !model.message.isEmpty { Text(model.message).font(.caption).foregroundStyle(.secondary) }
                 }.padding()
-            }.background(Color(red: 0.035, green: 0.05, blue: 0.08)).navigationTitle("Trading Platform")
+            }.background(Color(red: 0.035, green: 0.05, blue: 0.08)).navigationTitle("Trading Platform").task { await model.loadAuthStatus() }
         }
     }
     var orders: some View {

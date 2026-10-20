@@ -1,9 +1,14 @@
 import Foundation
 import SwiftUI
+import AuthenticationServices
+import CryptoKit
+import Security
+import UIKit
 
-@MainActor final class TradingModel: ObservableObject {
+@MainActor final class TradingModel: NSObject, ObservableObject, ASWebAuthenticationPresentationContextProviding {
     @Published var baseURL = "https://YOUR-HOME-COMPUTER-TAILNET-URL"
-    @Published var apiToken = ""
+    @Published var accessToken = ""
+    @Published var firstAccountSetupOpen = false
     @Published var pin = ""
     @Published var totp = ""
     @Published var exchange = "NSE"
@@ -47,6 +52,70 @@ import SwiftUI
     @Published var strategyStatusText = "Strategy stopped"
     @Published var strategyLastError = ""
     private let decoder = JSONDecoder()
+    private var authSession: ASWebAuthenticationSession?
+
+    func loadAuthStatus() async {
+        do {
+            let status: AuthStatusDTO = try await get("/auth/status")
+            firstAccountSetupOpen = status.firstAccountSetupOpen
+        } catch { message = error.localizedDescription }
+    }
+
+    func signIn() async {
+        do {
+            let verifier = try Self.randomURLSafe(count: 32)
+            let state = try Self.randomURLSafe(count: 24)
+            let digest = SHA256.hash(data: Data(verifier.utf8))
+            let challenge = Data(digest).base64URLEncodedString()
+            guard var components = URLComponents(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/oauth2/authorize") else { throw APIError.badURL }
+            components.queryItems = [URLQueryItem(name: "response_type", value: "code"), URLQueryItem(name: "client_id", value: "indian-algo-web"),
+                URLQueryItem(name: "redirect_uri", value: "indianalgo://oauth/callback/ios"), URLQueryItem(name: "scope", value: "openid"),
+                URLQueryItem(name: "state", value: state), URLQueryItem(name: "code_challenge", value: challenge), URLQueryItem(name: "code_challenge_method", value: "S256")]
+            guard let authURL = components.url else { throw APIError.badURL }
+            let callback: URL = try await withCheckedThrowingContinuation { continuation in
+                let session = ASWebAuthenticationSession(url: authURL, callbackURLScheme: "indianalgo") { url, error in
+                    if let error { continuation.resume(throwing: error); return }
+                    guard let url else { continuation.resume(throwing: APIError.invalidResponse); return }
+                    continuation.resume(returning: url)
+                }
+                session.presentationContextProvider = self
+                session.prefersEphemeralWebBrowserSession = false
+                authSession = session
+                if !session.start() { continuation.resume(throwing: APIError.invalidResponse) }
+            }
+            guard URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "state" })?.value == state else {
+                throw APIError.server("OAuth state check failed. Start sign in again.")
+            }
+            guard let code = URLComponents(url: callback, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "code" })?.value else {
+                throw APIError.server("Authorization code missing.")
+            }
+            try await exchangeAuthorizationCode(code, verifier: verifier)
+            await connect()
+        } catch { message = error.localizedDescription }
+    }
+
+    private func exchangeAuthorizationCode(_ code: String, verifier: String) async throws {
+        let redirect = "indianalgo://oauth/callback/ios"
+        guard let url = URL(string: baseURL.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: "/")) + "/oauth2/token") else { throw APIError.badURL }
+        var request = URLRequest(url: url); request.httpMethod = "POST"
+        request.setValue("application/x-www-form-urlencoded", forHTTPHeaderField: "Content-Type")
+        var form = URLComponents(); form.queryItems = [URLQueryItem(name: "grant_type", value: "authorization_code"), URLQueryItem(name: "client_id", value: "indian-algo-web"), URLQueryItem(name: "code", value: code), URLQueryItem(name: "redirect_uri", value: redirect), URLQueryItem(name: "code_verifier", value: verifier)]
+        request.httpBody = Data((form.percentEncodedQuery ?? "").utf8)
+        let (data, response) = try await URLSession.shared.data(for: request)
+        try check(response, data)
+        accessToken = try decoder.decode(OAuthTokenDTO.self, from: data).accessToken
+    }
+
+    func presentationAnchor(for session: ASWebAuthenticationSession) -> ASPresentationAnchor {
+        UIApplication.shared.connectedScenes.compactMap { $0 as? UIWindowScene }.flatMap(\.windows).first(where: \.isKeyWindow) ?? UIWindow(frame: .zero)
+    }
+
+    private static func randomURLSafe(count: Int) throws -> String {
+        var bytes = [UInt8](repeating: 0, count: count)
+        let status = bytes.withUnsafeMutableBytes { SecRandomCopyBytes(kSecRandomDefault, count, $0.baseAddress!) }
+        guard status == errSecSuccess else { throw APIError.invalidResponse }
+        return Data(bytes).base64URLEncodedString()
+    }
 
     func connect() async {
         do {
@@ -58,6 +127,12 @@ import SwiftUI
             candles = try await get("/api/market/\(symbol)/candles")
             message = "Connected to home backend."
         } catch { health = "Connection failed"; message = error.localizedDescription }
+    }
+    func signOut() {
+        Task {
+            do { let _: SimpleStatusDTO = try await post("/auth/logout", body: EmptyRequest()) } catch { }
+            accessToken = ""; account = nil; health = "Signed out"; message = "Signed out."
+        }
     }
     func refresh() async {
         do {
@@ -231,16 +306,16 @@ import SwiftUI
     func getRaw(_ path: String) async throws -> String {
         guard let url = URL(string: baseURL + path) else { throw APIError.badURL }
         var request = URLRequest(url: url); request.timeoutInterval = 12
-        if !apiToken.isEmpty { request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization") }
-        let (data,response)=try await URLSession.shared.data(for:request)
+        if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        let (data,response)=try await authorizedData(for: request)
         try check(response,data)
         return String(data:data,encoding:.utf8) ?? "No response body"
     }
     func get<T: Decodable>(_ path: String) async throws -> T {
         guard let url = URL(string: baseURL + path) else { throw APIError.badURL }
         var request = URLRequest(url: url); request.timeoutInterval = 12
-        if !apiToken.isEmpty { request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization") }
-        let (data, response) = try await URLSession.shared.data(for: request)
+        if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
+        let (data, response) = try await authorizedData(for: request)
         try check(response, data)
         return try decoder.decode(T.self, from: data)
     }
@@ -248,11 +323,18 @@ import SwiftUI
         guard let url = URL(string: baseURL + path) else { throw APIError.badURL }
         var request = URLRequest(url: url); request.httpMethod = "POST"; request.timeoutInterval = 20
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        if !apiToken.isEmpty { request.setValue("Bearer \(apiToken)", forHTTPHeaderField: "Authorization") }
+        if !accessToken.isEmpty { request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization") }
         request.httpBody = try JSONEncoder().encode(body)
-        let (data, response) = try await URLSession.shared.data(for: request)
+        let (data, response) = try await authorizedData(for: request)
         try check(response, data)
         return try decoder.decode(T.self, from: data)
+    }
+    private func authorizedData(for request: URLRequest) async throws -> (Data, URLResponse) {
+        let (data, response) = try await URLSession.shared.data(for: request)
+        if (response as? HTTPURLResponse)?.statusCode == 401, !accessToken.isEmpty {
+            accessToken = ""; message = "Sign-in expired. Tap OAuth sign in again."
+        }
+        return (data, response)
     }
     private func check(_ response: URLResponse, _ data: Data) throws {
         guard let http = response as? HTTPURLResponse else { throw APIError.invalidResponse }
@@ -272,6 +354,13 @@ import SwiftUI
         }
     }
 }
+private extension Data {
+    func base64URLEncodedString() -> String {
+        base64EncodedString().replacingOccurrences(of: "+", with: "-").replacingOccurrences(of: "/", with: "_").replacingOccurrences(of: "=", with: "")
+    }
+}
+struct AuthStatusDTO: Decodable { var firstAccountSetupOpen: Bool }
+struct OAuthTokenDTO: Decodable { var accessToken: String; enum CodingKeys: String, CodingKey { case accessToken = "access_token" } }
 struct HealthDTO: Decodable { var status: String }
 struct CandleDTO: Decodable, Identifiable {
     var time: String; var open: Double; var high: Double; var low: Double; var close: Double; var volume: Double

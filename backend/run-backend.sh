@@ -20,14 +20,7 @@ for candidate in "$target_dir"/*.jar; do
 done
 [[ -n "$jar" ]] || { echo "ERROR: No packaged JAR found. Build once with: mvn clean package"; exit 1; }
 
-if [[ -z "${APP_API_TOKEN:-}" || ${#APP_API_TOKEN} -lt 32 ]]; then
-  command -v openssl >/dev/null 2>&1 || { echo "ERROR: OpenSSL is needed to generate APP_API_TOKEN."; exit 1; }
-  APP_API_TOKEN="$(openssl rand -hex 32)"
-  export APP_API_TOKEN
-  echo "Generated API token for this run. Enter it in the web/iPhone/Android client:"
-  printf '%s\n' "$APP_API_TOKEN"
-fi
 export APP_BIND_ADDRESS="${APP_BIND_ADDRESS:-127.0.0.1}"
 echo "Starting packaged application: $(basename "$jar")"
-echo "Live trading is disabled. Backend bind address: $APP_BIND_ADDRESS"
+echo "Live trading is disabled. Create the first login account from localhost. Backend bind address: $APP_BIND_ADDRESS"
 exec java -jar "$jar"

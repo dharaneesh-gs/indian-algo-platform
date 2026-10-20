@@ -3,8 +3,7 @@
 1. Open `ios/TradingPlatform.xcodeproj` on a Mac with Xcode 15+.
 2. Select the `TradingPlatform` target and set your Apple Developer team and a unique bundle identifier.
 3. Select iPhone 13 as the run destination and build/run.
-4. In the app's Home tab, set the backend URL to your private HTTPS endpoint and enter the same `APP_API_TOKEN` configured on the home computer.
-5. Tap Connect / Refresh.
+4. Create the first account on the backend computer's web dashboard. In the iPhone app's Home tab, set the backend URL to your private HTTPS endpoint, then tap **Sign in with OAuth 2.0** and authenticate in the system browser. The iPhone returns to the app after authentication using PKCE. Access tokens expire after 10 minutes; sign in again when prompted.
 
 The app uses native SwiftUI and targets iOS 16+. It has not been compiled or device-tested here.
 

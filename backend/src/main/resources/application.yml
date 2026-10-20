@@ -16,6 +16,9 @@ spring:
   h2:
     console:
       enabled: false
+security:
+  oauth:
+    web-redirect-uris: "${AUTH_WEB_REDIRECT_URIS:http://127.0.0.1:8080/,http://localhost:8080/}"
 management:
   endpoints:
     web:
